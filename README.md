@@ -51,17 +51,3 @@ cd client
 gcc client.c -o client -lpthread
 ./client
 ```
-
-### Các lệnh tương tác trên Client:
-**Chưa đăng nhập:**
-Menu sẽ hiển thị tùy chọn:
-1. Đăng ký (Nhập lần lượt username và password khi được hỏi)
-2. Đăng nhập (Nhập lần lượt username và password khi được hỏi)
-
-**Sau khi đăng nhập thành công:**
-Menu sẽ hiển thị tùy chọn:
-1. Tạo phòng (Nhập tên phòng, Client sẽ **tự động tham gia** phòng vừa tạo)
-2. Tham gia phòng (Nhập tên phòng, Server sẽ gửi lại **toàn bộ lịch sử tin nhắn** cũ của phòng này cho bạn)
-
-**Sau khi vào phòng:**
-- Chỉ cần gõ nội dung tin nhắn và nhấn ENTER để chat.

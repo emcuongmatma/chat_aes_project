@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <pthread.h>
+#include <termios.h>
 
 #define PORT 9000
 #define AES_ENCRYPT 0
@@ -22,6 +23,43 @@ int sock;
 int is_logged_in = 0;
 char my_username[50];
 int current_room = -1;
+
+void get_password(const char *prompt, char *buffer) {
+    struct termios oldt, newt;
+    int i = 0;
+    char c = 0;
+
+    printf("%s", prompt);
+    fflush(stdout);
+
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    // Disable canonical mode (buffered i/o) and local echo
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+    while (1) {
+        c = getchar();
+        
+        if (c == '\n' || c == '\r') {
+            buffer[i] = '\0';
+            break;
+        } else if (c == 127 || c == 8) { // Backspace
+            if (i > 0) {
+                i--;
+                printf("\b \b");
+                fflush(stdout);
+            }
+        } else {
+            buffer[i++] = c;
+            printf("*");
+            fflush(stdout);
+        }
+    }
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    printf("\n");
+}
 
 void crypt_msg(char *msg, int mode)
 {
@@ -158,12 +196,22 @@ int main()
 
         if (!is_logged_in) {
             if(strcmp(input, "1") == 0) {
+                char confirm_pw[50];
                 printf("Enter new username: ");
                 scanf("%s", arg1);
-                printf("Enter new password: ");
-                scanf("%s", arg2);
                 getchar(); // consume newline
                 
+                while(1) {
+                    get_password("Enter new password: ", arg2);
+                    get_password("Confirm new password: ", confirm_pw);
+                    
+                    if (strcmp(arg2, confirm_pw) != 0) {
+                        printf("Passwords do not match. Please try again.\n");
+                    } else {
+                        break;
+                    }
+                }
+
                 strcpy(pkt.cmd, "REGISTER");
                 strcpy(pkt.arg1, arg1);
                 strcpy(pkt.arg2, arg2);
@@ -172,9 +220,8 @@ int main()
             else if(strcmp(input, "2") == 0) {
                 printf("Enter username: ");
                 scanf("%s", arg1);
-                printf("Enter password: ");
-                scanf("%s", arg2);
                 getchar(); // consume newline
+                get_password("Enter password: ", arg2);
                 
                 strcpy(pkt.cmd, "LOGIN");
                 strcpy(pkt.arg1, arg1);
