@@ -75,6 +75,22 @@ void crypt_msg(char *msg, int mode)
     close(fd);
 }
 
+void print_menu() {
+    if(current_room != -1) return; // avoid printing menu when in a chat room
+
+    printf("\n--- CHAT AES T3 ---\n");
+    if(!is_logged_in) {
+        printf("1. Register\n");
+        printf("2. Login\n");
+        printf("\nChoose an option (1/2): ");
+    } else if(current_room == -1) {
+        printf("1. Create Room\n");
+        printf("2. Join Room\n");
+        printf("\nChoose an option (1/2): ");
+    }
+    fflush(stdout);
+}
+
 void *receiver(void *arg)
 {
     Packet pkt;
@@ -107,20 +123,26 @@ void *receiver(void *arg)
         }
         else if(strcmp(pkt.cmd, "CREATE_OK") == 0) {
             current_room = 1; // logical flag because auto-join
-            printf("\n> Room created and joined successfully! Type your message and press ENTER to send.\n> ");
+            printf("\n> Room created and joined successfully! Type your message and press ENTER to send. Type /leave to exit.\n> ");
             fflush(stdout);
         }
         else if(strcmp(pkt.cmd, "CREATE_ERR") == 0) {
-            printf("\n> Failed to create room (limit reached or error).\n> ");
+            printf("\n> Failed to create room: %s\n> ", pkt.arg1);
             fflush(stdout);
         }
         else if(strcmp(pkt.cmd, "JOIN_OK") == 0) {
             current_room = 1; // logical flag
-            printf("\n> Joined room successfully! Type your message and press ENTER to send.\n> ");
+            printf("\n> Joined room successfully! Type your message and press ENTER to send. Type /leave to exit.\n> ");
             fflush(stdout);
         }
         else if(strcmp(pkt.cmd, "JOIN_ERR") == 0) {
             printf("\n> Failed to join room (not found).\n> ");
+            fflush(stdout);
+        }
+        else if(strcmp(pkt.cmd, "LEAVE_OK") == 0) {
+            current_room = -1; // reset room state
+            printf("\n> Left the room successfully.\n");
+            print_menu();
             fflush(stdout);
         }
         else if(strcmp(pkt.cmd, "MSG") == 0) {
@@ -137,22 +159,6 @@ void *receiver(void *arg)
         }
     }
     return NULL;
-}
-
-void print_menu() {
-    if(current_room != -1) return; // avoid printing menu when in a chat room
-
-    printf("\n--- CHAT AES T3 ---\n");
-    if(!is_logged_in) {
-        printf("1. Register\n");
-        printf("2. Login\n");
-        printf("\nChoose an option (1/2): ");
-    } else if(current_room == -1) {
-        printf("1. Create Room\n");
-        printf("2. Join Room\n");
-        printf("\nChoose an option (1/2): ");
-    }
-    fflush(stdout);
 }
 
 int main()
@@ -255,6 +261,12 @@ int main()
             }
         }
         else {
+            if (strcmp(input, "/leave") == 0 || strcmp(input, "/quit") == 0) {
+                strcpy(pkt.cmd, "LEAVE");
+                send(sock, &pkt, sizeof(Packet), 0);
+                continue;
+            }
+
             strcpy(pkt.cmd, "MSG");
             strcpy(pkt.arg1, my_username);
             
