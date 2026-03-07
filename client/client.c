@@ -144,6 +144,12 @@ int main()
         print_menu();
         if(fgets(input, 256, stdin) == NULL) continue;
         
+        // If in a chat room, erase the line the user just typed so it doesn't leave duplicates
+        if (current_room != -1) {
+            printf("\033[1A\033[2K\r");
+            fflush(stdout);
+        }
+
         // Remove trailing newline
         input[strcspn(input, "\n")] = 0;
         if(strlen(input) == 0) continue;
