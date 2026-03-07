@@ -1,0 +1,1 @@
+savedcmd_/media/ecmm/01DB9836BDF7A120/chat_aes_project/driver/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /media/ecmm/01DB9836BDF7A120/chat_aes_project/driver/Module.symvers -T /media/ecmm/01DB9836BDF7A120/chat_aes_project/driver/modules.order -i Module.symvers -e 

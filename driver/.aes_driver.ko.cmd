@@ -1,0 +1,1 @@
+savedcmd_/media/ecmm/01DB9836BDF7A120/chat_aes_project/driver/aes_driver.ko := ld -r -m elf_x86_64 -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T scripts/module.lds -o /media/ecmm/01DB9836BDF7A120/chat_aes_project/driver/aes_driver.ko /media/ecmm/01DB9836BDF7A120/chat_aes_project/driver/aes_driver.o /media/ecmm/01DB9836BDF7A120/chat_aes_project/driver/aes_driver.mod.o
