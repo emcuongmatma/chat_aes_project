@@ -38,11 +38,13 @@ void get_password(const char *prompt, char *buffer) {
     printf("%s", prompt);
     fflush(stdout);
 
+    //tắt echo và canonical mode để không hiển thị ký tự khi gõ
     tcgetattr(STDIN_FILENO, &oldt);
     newt = oldt;
     newt.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
+    //đọc từng ký tự vã vẽ trên màn hình với password ẩn
     while (1) {
         c = getchar();
         
@@ -74,12 +76,16 @@ void crypt_msg(char *msg, int mode)
         return;
     }
 
+    //gọi lệnh điều khiển IO để mã hóa/ giải mã
+    //mode AES_ENCRYPT để mã hóa
+    //mode AES_DECRYPT để giải mã
     ioctl(fd, mode);
     write(fd, msg, 256);
     read(fd, msg, 256);
     close(fd);
 }
 
+//hàm in menu chính
 void print_menu() {
     if(current_room != -1) return; // avoid printing menu when in a chat room
 
@@ -109,6 +115,7 @@ void handle_register_input() {
     scanf("%s", arg1);
     getchar(); // consume newline
     
+    //input and check valid password
     while(1) {
         get_password("Enter new password: ", arg2);
         get_password("Confirm new password: ", confirm_pw);
@@ -120,6 +127,7 @@ void handle_register_input() {
         }
     }
 
+    //tạo và gửi request cho servẻr qua socket
     strcpy(pkt.cmd, "REGISTER");
     strcpy(pkt.arg1, arg1);
     strcpy(pkt.arg2, arg2);
@@ -136,6 +144,7 @@ void handle_login_input() {
     getchar(); // consume newline
     get_password("Enter password: ", arg2);
     
+    //tạo và gửi request cho servẻr qua socket
     strcpy(pkt.cmd, "LOGIN");
     strcpy(pkt.arg1, arg1);
     strcpy(pkt.arg2, arg2);
@@ -171,6 +180,7 @@ void handle_join_room_input() {
     send(sock, &pkt, sizeof(Packet), 0);
 }
 
+//hàm xử lý người dùng nhập vào trong khung chat
 void handle_chat_input(char *input) {
     Packet pkt;
     memset(&pkt, 0, sizeof(Packet));
@@ -241,6 +251,7 @@ void process_server_response(Packet *pkt) {
         
         if(strcmp(pkt->arg1, my_username) == 0) {
             printf("\33[2K\r[me]: %s\n> ", pkt->data);
+            //\33[2K \r là lệnh xóa dòng và đưa con trỏ về đầu dòng
         } else {
             printf("\33[2K\r[%s]: %s\n> ", pkt->arg1, pkt->data);
         }
@@ -248,6 +259,7 @@ void process_server_response(Packet *pkt) {
     }
 }
 
+//hàm nhận response từ server
 void *receiver(void *arg)
 {
     Packet pkt;
@@ -272,6 +284,8 @@ void *receiver(void *arg)
 
 int main()
 {
+
+    //khởi tạo socket client
     struct sockaddr_in server;
 
     sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -296,15 +310,19 @@ int main()
         if(fgets(input, 256, stdin) == NULL) continue;
         
         // Emulate clean chat flow by deleting typed line.
+        // Tránh trùng lặp tin nhắn vừa gõ và tin nhắn trả về từ server
         if (current_room != -1) {
             printf("\033[1A\033[2K\r");
             fflush(stdout);
         }
 
         input[strcspn(input, "\n")] = 0;
+        //xóa ký tự xuống dòng
         if(strlen(input) == 0) continue;
+        //input trống => chạy lại từ đầu
 
         if (!is_logged_in) {
+            //xử lý tùy chọn đăng nhập/ đăng ký
             if(strcmp(input, "1") == 0) {
                 handle_register_input();
             } else if(strcmp(input, "2") == 0) {
@@ -314,6 +332,7 @@ int main()
             }
         } 
         else if(current_room == -1) {
+            //xử lý tùy chọn tạo phòng/ tham gia phòng
             if(strcmp(input, "1") == 0) {
                 handle_create_room_input();
             } else if(strcmp(input, "2") == 0) {
@@ -326,6 +345,7 @@ int main()
             handle_chat_input(input);
         }
         
+        //delay 0.1s để tránh gửi quá nhanh
         usleep(100000); 
     }
 
