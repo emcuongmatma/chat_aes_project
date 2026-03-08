@@ -1,1 +1,4 @@
 client/.fuse_hidden0000028f00000007
+driver/*
+!driver/aes_driver.c
+!driver/Makefile
