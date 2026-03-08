@@ -75,23 +75,34 @@ Dự án xây dựng dựa trên kiến trúc tập trung **Client-Server** kế
 3. **Mô hình Bảo mật**
    - Sự an toàn của tin nhắn được bảo đảm bởi tính chất bảo mật đầu cuối (E2EE): Server chỉ biết ai đang gửi cho ai chứ không thể dịch được nội dung.  
 
-```mermaid
-graph TD
-    UserA(User A) -->|Nhập: Xin chào| ClientA(Client A)
-    ClientA -->|Gửi plaintext| KernelA(AES Driver - Client A)
-    KernelA -->|AES-128 ENCRYPT| KernelA
-    KernelA -->|Trả về ciphertext| ClientA
-    
-    ClientA -->|Gửi Socket| Server(Chat Server)
-    Server -->|Broadcast| ClientB(Client B)
-    
-    ClientB -->|Gửi ciphertext| KernelB(AES Driver - Client B)
-    KernelB -->|AES-128 DECRYPT| KernelB
-    KernelB -->|Trả về plaintext| ClientB
-    ClientB -->|In ra: Xin chào| UserB(User B)
-
-    classDef driver fill:#f9f,stroke:#333,stroke-width:2px;
-    class KernelA,KernelB driver;
+```text
+      [ USER A ]                                                 [ USER B ]
+          │                                                          ▲
+          │ (Plaintext)                                              │ (Plaintext)
+          ▼                                                          │
+    ┌─────────────┐                                            ┌─────┴───────┐
+    │  CLIENT A   │                                            │  CLIENT B   │
+    └──────┬──────┘                                            └──────▲──────┘
+           │                                                          │
+           │ ioctl(AES_ENCRYPT)                   ioctl(AES_DECRYPT)  │
+           ▼                                                          │
+  ╔═════════════════╗                                        ╔═════════════════╗
+  ║ AES-128 DRIVER  ║                                        ║ AES-128 DRIVER  ║
+  ║ (Kernel Space)  ║                                        ║ (Kernel Space)  ║
+  ╚════════┬════════╝                                        ╚════════▲════════╝
+           │                                                          │
+           │ (Ciphertext)                                (Ciphertext) │
+           ▼                                                          │
+    ┌────────────┐                                             ┌──────┴─────┐
+    │ SOCKET TCP │                                             │ SOCKET TCP │
+    └──────┬─────┘                                             └──────▲─────┘
+           │                                                          │
+           └──────────────────────────┐    ┌──────────────────────────┘
+                                      │    │
+                                      ▼    │  (Broadcast mode)
+                                 ▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+                                █ CHAT SERVER  █
+                                 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 ```
 
 ---
