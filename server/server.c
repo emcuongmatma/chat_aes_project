@@ -247,7 +247,19 @@ void handle_msg(int is_logged_in, int room, Packet *pkt) {
     // Re-broadcast the packet to all members in the room
     broadcast_packet(room, pkt);
 
-    // Save to history file
+    // In log ra server console (dưới dạng chuỗi HEX vì dữ liệu mã hóa không phải ký tự in ấn được)
+    printf("[%s] da gui toi phong [%s] chuoi ma hoa: ", pkt->arg1, rooms[room].name);
+    for(int i = 0; i < 256; i++) {
+        // Chỉ in ra những byte thực sự có giá trị (tránh in quá nhiều số 0 dư thừa tuỳ format)
+        // Tuy nhiên do AES mã hóa nguyên khối nên thường phải in đủ tệp, ở đây ta in 32 byte đầu tiên để minh họa
+        if (i < 32 || i == 255) { 
+            printf("%02x ", (unsigned char)pkt->data[i]);
+            if(i == 31) printf("... ");
+        }
+    }
+
+    //Lưu history
+    printf("\n");
     pthread_mutex_lock(&rooms_lock);
     char hist_file[100];
     snprintf(hist_file, sizeof(hist_file), "%s.hist", rooms[room].name);

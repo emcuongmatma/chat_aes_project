@@ -243,7 +243,6 @@ void process_server_response(Packet *pkt) {
     else if(strcmp(pkt->cmd, "LEAVE_OK") == 0) {
         current_room = -1; // reset room state
         printf("\n> Left the room successfully.\n");
-        print_menu();
         fflush(stdout);
     }
     else if(strcmp(pkt->cmd, "MSG") == 0) {
