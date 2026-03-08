@@ -71,9 +71,28 @@ Dự án xây dựng dựa trên kiến trúc tập trung **Client-Server** kế
    - **Server:** Đóng vai trò làm trạm định tuyến. Nhận các kết nối, xác thực tài khoản qua file lưu trữ tĩnh, quản lý danh sách phòng chat và phân phối chính xác các gói tin mã hoá giữa các Client.
    - **Client:** Xử lý giao diện luồng chat trên terminal, làm nhiệm vụ nhận input và điều hướng lệnh đi.
 2. **Kernel Space (Không gian Nhân Linux)**
-   - **AES Driver:** Việc mã hóa và giải mã không diễn ra ở Client để tránh bị can thiệp ngược bộ nhớ (memory dumping). Thay vào đó, nó nhờ Kernel làm thông qua file hệ thống `/dev/aes_driver`. Driver này chứa thuật toán **AES-128 ECB code tay 100%**.
+   - **AES-128 Driver:** Việc mã hóa và giải mã không diễn ra ở Client để tránh bị can thiệp ngược bộ nhớ (memory dumping). Thay vào đó, nó nhờ Kernel làm thông qua file hệ thống `/dev/aes_driver`.
 3. **Mô hình Bảo mật**
    - Sự an toàn của tin nhắn được bảo đảm bởi tính chất bảo mật đầu cuối (E2EE): Server chỉ biết ai đang gửi cho ai chứ không thể dịch được nội dung.  
+
+```mermaid
+graph TD
+    UserA(User A) -->|Nhập: Xin chào| ClientA(Client A)
+    ClientA -->|Gửi plaintext| KernelA(AES Driver - Client A)
+    KernelA -->|AES-128 ENCRYPT| KernelA
+    KernelA -->|Trả về ciphertext| ClientA
+    
+    ClientA -->|Gửi Socket| Server(Chat Server)
+    Server -->|Broadcast| ClientB(Client B)
+    
+    ClientB -->|Gửi ciphertext| KernelB(AES Driver - Client B)
+    KernelB -->|AES-128 DECRYPT| KernelB
+    KernelB -->|Trả về plaintext| ClientB
+    ClientB -->|In ra: Xin chào| UserB(User B)
+
+    classDef driver fill:#f9f,stroke:#333,stroke-width:2px;
+    class KernelA,KernelB driver;
+```
 
 ---
 
