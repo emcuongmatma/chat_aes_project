@@ -323,8 +323,13 @@ void *receiver(void *arg)
  * MAIN PROGRAM
  * ========================================================= */
 
-int main()
+int main(int argc, char *argv[])
 {
+    char server_ip[50] = "127.0.0.1";
+    if (argc > 1) {
+        strncpy(server_ip, argv[1], 49);
+    }
+
     // Tự động nạp driver nếu chưa có
     auto_load_driver();
 
@@ -335,7 +340,13 @@ int main()
 
     server.sin_family = AF_INET;
     server.sin_port = htons(PORT);
-    inet_pton(AF_INET, "127.0.0.1", &server.sin_addr);
+    
+    if (inet_pton(AF_INET, server_ip, &server.sin_addr) <= 0) {
+        printf("Invalid IP address format: %s. Using 127.0.0.1 instead.\n", server_ip);
+        inet_pton(AF_INET, "127.0.0.1", &server.sin_addr);
+    } else {
+        printf("Connecting to server at %s:%d...\n", server_ip, PORT);
+    }
 
     if (connect(sock, (struct sockaddr*)&server, sizeof(server)) < 0) {
         perror("Connection failed");
