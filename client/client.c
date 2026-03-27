@@ -27,6 +27,48 @@ int current_room = -1;
 void print_menu();
 
 /* =========================================================
+ * DRIVER MANAGEMENT
+ * ========================================================= */
+
+void auto_load_driver() {
+    int fd = open("/dev/aes_driver", O_RDWR);
+    if (fd != -1) {
+        close(fd);
+        return; // Driver đã được nạp
+    }
+
+    printf("[Hệ thống] Không tìm thấy driver AES. Đang thử nạp...\n");
+
+    // Đường dẫn tương đối tới file driver .ko (giả định chạy từ thư mục client/)
+    const char *driver_path = "../driver/aes_driver.ko";
+
+    // 1. Thử nạp module vào kernel
+    char cmd[512];
+    snprintf(cmd, sizeof(cmd), "sudo insmod %s 2>/dev/null", driver_path);
+    system(cmd);
+
+    // 2. Lấy số Major được cấp phát động
+    FILE *fp = popen("awk '$2==\"aes_driver\" {print $1}' /proc/devices", "r");
+    if (fp) {
+        char major_str[10];
+        if (fgets(major_str, sizeof(major_str), fp)) {
+            int major = atoi(major_str);
+            // 3. Tạo device node và cấp quyền
+            snprintf(cmd, sizeof(cmd), 
+                     "sudo rm -f /dev/aes_driver && "
+                     "sudo mknod /dev/aes_driver c %d 0 && "
+                     "sudo chmod 666 /dev/aes_driver", major);
+            if (system(cmd) == 0) {
+                printf("[Hệ thống] Nạp driver AES thành công (Major: %d).\n", major);
+            }
+        } else {
+            fprintf(stderr, "[Lỗi] Không tìm thấy 'aes_driver' trong /proc/devices. Driver đã được biên dịch chưa?\n");
+        }
+        pclose(fp);
+    }
+}
+
+/* =========================================================
  * UTILITY FUNCTIONS
  * ========================================================= */
 
@@ -283,6 +325,8 @@ void *receiver(void *arg)
 
 int main()
 {
+    // Tự động nạp driver nếu chưa có
+    auto_load_driver();
 
     //khởi tạo socket client
     struct sockaddr_in server;

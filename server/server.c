@@ -65,7 +65,7 @@ void handle_register(int sock, Packet *pkt) {
     memset(&response, 0, sizeof(Packet));
     //khóa thread đăng ký tài khoản
     pthread_mutex_lock(&auth_lock);
-    FILE *f = fopen("users.txt", "a+");
+    FILE *f = fopen("users.db", "a+");
     //đưa con trỏ về đầu (để check tồn tại)
     fseek(f, 0, SEEK_SET);
     char u[50], p[50];
@@ -95,7 +95,7 @@ void handle_login(int sock, Packet *pkt, char *username, int *is_logged_in) {
     memset(&response, 0, sizeof(Packet));
     
     pthread_mutex_lock(&auth_lock);
-    FILE *f = fopen("users.txt", "r");
+    FILE *f = fopen("users.db", "r");
     int valid = 0;
     if(f) {
         char u[50], p[50];
@@ -338,7 +338,7 @@ int main()
     listen(server_fd, 10);
     printf("Server started on port %d\n", PORT);
     //đảm bảo khởi tạo database
-    FILE *f = fopen("users.txt", "a+");
+    FILE *f = fopen("users.db", "a+");
     if(f) fclose(f);
 
     while(1)
