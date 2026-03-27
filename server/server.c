@@ -9,40 +9,65 @@
 #define PORT 9000
 #define MAX_CLIENTS 50
 #define MAX_ROOMS 10
+#define HASH_SIZE 17  // 16 chars + null terminator
 
-//Packet Model
+// ===============================================
+// MODELS & STRUCTURES
+// ===============================================
+
+// Packet Model - Cấu trúc dữ liệu gửi qua lại giữa Client và Server
 typedef struct {
-    char cmd[20]; //lệnh thực thi
-    char arg1[50]; //tài khoản
-    char arg2[50]; //mật khẩu
-    char data[256]; //nội dung gửi đi
+    char cmd[20];   // Lệnh thực thi (LOGIN, REGISTER, MSG, ...)
+    char arg1[50];  // Tham số 1 (thường là username hoặc tên phòng)
+    char arg2[50];  // Tham số 2 (thường là password)
+    char data[256]; // Nội dung truyền tải (tin nhắn mã hóa)
 } Packet;
 
-//Client Model
+// Client Model - Thông tin quản lý một kết nối người dùng
 typedef struct {
     int socket;
     char username[50];
-    int room;
+    int room;       // ID phòng hiện tại (-1 nếu không ở trong phòng)
     int is_logged_in;
 } Client;
 
-//Room chat Model
+// Room chat Model - Thông tin quản lý một phòng chat
 typedef struct {
     char name[50];
     int members[MAX_CLIENTS];
     int count;
 } Room;
 
-//Mảng lưu trữ client
-Client clients[MAX_CLIENTS];
-//Mảng lưu trữ phòng chat
-Room rooms[MAX_ROOMS];
+// ===============================================
+// GLOBAL VARIABLES
+// ===============================================
 
+Room rooms[MAX_ROOMS];
 int room_count = 0;
 
-//Mutex để tránh xung đột khi truy cập tài nguyên (đăng ký tài khoản và đăng ký phòng chat)
+// Mutex bảo vệ dữ liệu dùng chung
 pthread_mutex_t auth_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t rooms_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// ===============================================
+// SECURITY FUNCTIONS
+// ===============================================
+
+/**
+ * Hàm băm mật khẩu đơn giản (djb2 hash)
+ * Mục đích: Không lưu mật khẩu text rõ vào database để bảo đảm an toàn.
+ */
+void hash_password(const char *pass, char *out) {
+    unsigned long hash = 5381;
+    int c;
+    while ((c = *pass++))
+        hash = ((hash << 5) + hash) + c; 
+    sprintf(out, "%016lx", hash);
+}
+
+// ===============================================
+// CORE FUNCTIONS
+// ===============================================
 
 //Hàm gửi packet đến tất cả các thành viên trong phòng
 void broadcast_packet(int room, Packet *pkt)
@@ -61,12 +86,18 @@ void broadcast_packet(int room, Packet *pkt)
 //Hàm xử lý đăng ký tài khoản
 void handle_register(int sock, Packet *pkt) {
     Packet response;
-    //cấp phát bộ nhớ cho response
     memset(&response, 0, sizeof(Packet));
-    //khóa thread đăng ký tài khoản
+    
+    char hashed_pass[HASH_SIZE];
+    hash_password(pkt->arg2, hashed_pass);
+
     pthread_mutex_lock(&auth_lock);
     FILE *f = fopen("users.db", "a+");
-    //đưa con trỏ về đầu (để check tồn tại)
+    if (!f) {
+        pthread_mutex_unlock(&auth_lock);
+        return;
+    }
+
     fseek(f, 0, SEEK_SET);
     char u[50], p[50];
     int exists = 0;
@@ -76,16 +107,18 @@ void handle_register(int sock, Packet *pkt) {
             break;
         }
     }
+
     if(!exists) {
-        fprintf(f, "%s %s\n", pkt->arg1, pkt->arg2);
+        fprintf(f, "%s %s\n", pkt->arg1, hashed_pass);
         strcpy(response.cmd, "REGISTER_OK");
+        printf("[Log] Registered new user: %s\n", pkt->arg1);
     } else {
         strcpy(response.cmd, "REGISTER_ERR");
         strcpy(response.arg1, "Username exists");
     }
+    
     fclose(f);
     pthread_mutex_unlock(&auth_lock);
-    //gửi kết quả về client
     send(sock, &response, sizeof(Packet), 0);
 }
 
@@ -94,13 +127,16 @@ void handle_login(int sock, Packet *pkt, char *username, int *is_logged_in) {
     Packet response;
     memset(&response, 0, sizeof(Packet));
     
+    char hashed_pass[HASH_SIZE];
+    hash_password(pkt->arg2, hashed_pass);
+
     pthread_mutex_lock(&auth_lock);
     FILE *f = fopen("users.db", "r");
     int valid = 0;
     if(f) {
         char u[50], p[50];
         while(fscanf(f, "%s %s", u, p) != EOF) {
-            if(strcmp(u, pkt->arg1) == 0 && strcmp(p, pkt->arg2) == 0) {
+            if(strcmp(u, pkt->arg1) == 0 && strcmp(p, hashed_pass) == 0) {
                 valid = 1;
                 break;
             }
@@ -111,15 +147,19 @@ void handle_login(int sock, Packet *pkt, char *username, int *is_logged_in) {
 
     if(valid) {
         strcpy(username, pkt->arg1);
-        //lưu trạng thái đã đăng nhập (để check auth khi tạo phòng, gửi tin nhắn,.. ở phía server)
         *is_logged_in = 1;
         strcpy(response.cmd, "LOGIN_OK");
+        printf("[Log] User logged in: %s\n", username);
     } else {
         strcpy(response.cmd, "LOGIN_ERR");
         strcpy(response.arg1, "Invalid credentials");
     }
     send(sock, &response, sizeof(Packet), 0);
 }
+
+// ===============================================
+// ROOM & MESSAGE HANDLERS
+// ===============================================
 
 void handle_create(int sock, Packet *pkt, int is_logged_in, int *room) {
     if(!is_logged_in) return;
@@ -128,7 +168,6 @@ void handle_create(int sock, Packet *pkt, int is_logged_in, int *room) {
     
     pthread_mutex_lock(&rooms_lock);
     int exists = 0;
-    //check tồn tại
     for(int i = 0; i < room_count; i++) {
         if(strcmp(rooms[i].name, pkt->arg1) == 0) {
             exists = 1;
@@ -140,23 +179,24 @@ void handle_create(int sock, Packet *pkt, int is_logged_in, int *room) {
         strcpy(response.cmd, "CREATE_ERR");
         strcpy(response.arg1, "Room already exists");
     } else if (room_count < MAX_ROOMS) {
-        //tạo room mới
+        // Khởi tạo phòng mới
         strcpy(rooms[room_count].name, pkt->arg1);
         rooms[room_count].count = 0;
         int new_room_idx = room_count;
         room_count++;
         
-        // Trả về room id cho thread của client (tự động vào phòng)
+        // Tự động cho người tạo vào phòng
         *room = new_room_idx;
         rooms[new_room_idx].members[rooms[new_room_idx].count++] = sock;
         
-        // Tạo file lưu trữ lịch sử chat
+        // Tạo file lưu trữ lịch sử chat rỗng
         char hist_file[100];
         snprintf(hist_file, sizeof(hist_file), "%s.hist", rooms[new_room_idx].name);
         FILE *hf = fopen(hist_file, "ab");
         if (hf) fclose(hf);
 
         strcpy(response.cmd, "CREATE_OK");
+        printf("[Log] Room created: %s by socket %d\n", pkt->arg1, sock);
     } else {
         strcpy(response.cmd, "CREATE_ERR");
         strcpy(response.arg1, "Max rooms reached");
@@ -185,14 +225,14 @@ void handle_join(int sock, Packet *pkt, int is_logged_in, int *room) {
     if(found) {
         strcpy(response.cmd, "JOIN_OK");
         send(sock, &response, sizeof(Packet), 0);
+        printf("[Log] Socket %d joined room: %s\n", sock, rooms[*room].name);
         
-        // Send chat history
+        // Gửi lại lịch sử chat cho người mới vào
         char hist_file[100];
         snprintf(hist_file, sizeof(hist_file), "%s.hist", rooms[*room].name);
         FILE *hf = fopen(hist_file, "rb");
         if (hf) {
             Packet hist_pkt;
-            //đọc từng khối packet của file history rồi gửi vêf cho client mới đăng nhập
             while (fread(&hist_pkt, sizeof(Packet), 1, hf) == 1) {
                 send(sock, &hist_pkt, sizeof(Packet), 0);
             }
@@ -208,30 +248,31 @@ void remove_client_from_room(int sock, int *room) {
     if (*room == -1) return;
     
     pthread_mutex_lock(&rooms_lock);
-    for(int i = 0; i < rooms[*room].count; i++) {
-        if(rooms[*room].members[i] == sock) {
-            rooms[*room].members[i] = rooms[*room].members[rooms[*room].count - 1];
-            rooms[*room].count--;
+    int r_idx = *room;
+    for(int i = 0; i < rooms[r_idx].count; i++) {
+        if(rooms[r_idx].members[i] == sock) {
+            rooms[r_idx].members[i] = rooms[r_idx].members[rooms[r_idx].count - 1];
+            rooms[r_idx].count--;
             break;
         }
     }
-    if (rooms[*room].count == 0) {
-        //xóa file chat khi không còn ai trong phòng
+
+    // Nếu phòng không còn ai, xóa phòng và lịch sử
+    if (rooms[r_idx].count == 0) {
         char hist_file[100];
-        snprintf(hist_file, sizeof(hist_file), "%s.hist", rooms[*room].name);
-        //xóa room trong mảng
-        rooms[*room] = rooms[room_count - 1];
+        snprintf(hist_file, sizeof(hist_file), "%s.hist", rooms[r_idx].name);
+        printf("[Log] Room %s is empty, deleting...\n", rooms[r_idx].name);
+        
+        rooms[r_idx] = rooms[room_count - 1];
         room_count--;
         remove(hist_file);
     }
     pthread_mutex_unlock(&rooms_lock);
-    
     *room = -1;
 }
 
 void handle_leave(int sock, int is_logged_in, int *room) {
     if(!is_logged_in || *room == -1) return;
-    
     remove_client_from_room(sock, room);
     
     Packet response;
@@ -241,25 +282,12 @@ void handle_leave(int sock, int is_logged_in, int *room) {
 }
 
 void handle_msg(int is_logged_in, int room, Packet *pkt) {
-    //check trạng thái đăng nhập và phòng hiện tại của client
     if(!is_logged_in || room == -1) return;
     
-    // Re-broadcast the packet to all members in the room
+    // Chuyển tiếp tin nhắn đến toàn bộ thành viên trong phòng
     broadcast_packet(room, pkt);
 
-    // In log ra server console (dưới dạng chuỗi HEX vì dữ liệu mã hóa không phải ký tự in ấn được)
-    printf("[%s] da gui toi phong [%s] chuoi ma hoa: ", pkt->arg1, rooms[room].name);
-    for(int i = 0; i < 256; i++) {
-        // Chỉ in ra những byte thực sự có giá trị (tránh in quá nhiều số 0 dư thừa tuỳ format)
-        // Tuy nhiên do AES mã hóa nguyên khối nên thường phải in đủ tệp, ở đây ta in 32 byte đầu tiên để minh họa
-        if (i < 32 || i == 255) { 
-            printf("%02x ", (unsigned char)pkt->data[i]);
-            if(i == 31) printf("... ");
-        }
-    }
-
-    //Lưu history
-    printf("\n");
+    // Lưu vào lịch sử chat
     pthread_mutex_lock(&rooms_lock);
     char hist_file[100];
     snprintf(hist_file, sizeof(hist_file), "%s.hist", rooms[room].name);
@@ -269,6 +297,11 @@ void handle_msg(int is_logged_in, int room, Packet *pkt) {
         fclose(hf);
     }
     pthread_mutex_unlock(&rooms_lock);
+
+    // Log thông tin mã hóa ra console server
+    printf("[Msg] %s -> %s: ", pkt->arg1, rooms[room].name);
+    for(int i = 0; i < 16; i++) printf("%02x ", (unsigned char)pkt->data[i]);
+    printf("...\n");
 }
 
 //tạo thread cho từng client
