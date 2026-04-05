@@ -7,9 +7,22 @@ void auto_load_driver() {
         return; 
     }
 
-    printf("[Hệ thống] Không tìm thấy driver AES. Đang thử nạp...\n");
+    printf("[System] AES driver node not found. Trying to load...\n");
 
-    const char *driver_path = "../driver/aes_driver.ko";
+    const char *paths[] = {"../driver/aes_driver.ko", "../../driver/aes_driver.ko", "./driver/aes_driver.ko"};
+    const char *driver_path = NULL;
+    
+    for (int i = 0; i < 3; i++) {
+        if (access(paths[i], F_OK) == 0) {
+            driver_path = paths[i];
+            break;
+        }
+    }
+
+    if (!driver_path) {
+        fprintf(stderr, "[Error] Could not find aes_driver.ko in expected paths.\n");
+        return;
+    }
 
     char cmd[512];
     snprintf(cmd, sizeof(cmd), "sudo insmod %s 2>/dev/null", driver_path);
@@ -25,6 +38,7 @@ void auto_load_driver() {
                      "sudo mknod /dev/aes_driver c %d 0 && "
                      "sudo chmod 666 /dev/aes_driver", major);
             system(cmd);
+            printf("[System] AES driver loaded successfully (Major: %d).\n", major);
         }
         pclose(fp);
     }
@@ -58,4 +72,15 @@ int connect_to_server(const char *ip) {
     }
 
     return sock;
+}
+
+void send_packet(int sock, const char *cmd, const char *arg1, const char *arg2, const char *data) {
+    Packet pkt;
+    memset(&pkt, 0, sizeof(Packet));
+    if(cmd)  strncpy(pkt.cmd, cmd, 19);
+    if(arg1) strncpy(pkt.arg1, arg1, 49);
+    if(arg2) strncpy(pkt.arg2, arg2, 49);
+    if(data) strncpy(pkt.data, data, 255);
+    
+    send(sock, &pkt, sizeof(Packet), 0);
 }
