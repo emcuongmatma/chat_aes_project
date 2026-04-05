@@ -1,23 +1,5 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <sys/ioctl.h>
-#include <pthread.h>
+#include "client_shared.h"
 #include <termios.h>
-
-#define PORT 9000
-#define AES_ENCRYPT 0
-#define AES_DECRYPT 1
-
-typedef struct {
-    char cmd[20];
-    char arg1[50];
-    char arg2[50];
-    char data[256];
-} Packet;
 
 int sock;
 int is_logged_in = 0;
@@ -26,47 +8,7 @@ int current_room = -1;
 
 void print_menu();
 
-/* =========================================================
- * DRIVER MANAGEMENT
- * ========================================================= */
-
-void auto_load_driver() {
-    int fd = open("/dev/aes_driver", O_RDWR);
-    if (fd != -1) {
-        close(fd);
-        return; // Driver đã được nạp
-    }
-
-    printf("[Hệ thống] Không tìm thấy driver AES. Đang thử nạp...\n");
-
-    // Đường dẫn tương đối tới file driver .ko (giả định chạy từ thư mục client/)
-    const char *driver_path = "../driver/aes_driver.ko";
-
-    // 1. Thử nạp module vào kernel
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd), "sudo insmod %s 2>/dev/null", driver_path);
-    system(cmd);
-
-    // 2. Lấy số Major được cấp phát động
-    FILE *fp = popen("awk '$2==\"aes_driver\" {print $1}' /proc/devices", "r");
-    if (fp) {
-        char major_str[10];
-        if (fgets(major_str, sizeof(major_str), fp)) {
-            int major = atoi(major_str);
-            // 3. Tạo device node và cấp quyền
-            snprintf(cmd, sizeof(cmd), 
-                     "sudo rm -f /dev/aes_driver && "
-                     "sudo mknod /dev/aes_driver c %d 0 && "
-                     "sudo chmod 666 /dev/aes_driver", major);
-            if (system(cmd) == 0) {
-                printf("[Hệ thống] Nạp driver AES thành công (Major: %d).\n", major);
-            }
-        } else {
-            fprintf(stderr, "[Lỗi] Không tìm thấy 'aes_driver' trong /proc/devices. Driver đã được biên dịch chưa?\n");
-        }
-        pclose(fp);
-    }
-}
+// Driver management functions are now in client_shared.c
 
 /* =========================================================
  * UTILITY FUNCTIONS
@@ -110,22 +52,7 @@ void get_password(const char *prompt, char *buffer) {
     printf("\n");
 }
 
-void crypt_msg(char *msg, int mode)
-{
-    int fd = open("/dev/aes_driver", O_RDWR);
-    if(fd < 0) {
-        perror("Failed to open AES driver");
-        return;
-    }
-
-    //gọi lệnh điều khiển IO để mã hóa/ giải mã
-    //mode AES_ENCRYPT để mã hóa
-    //mode AES_DECRYPT để giải mã
-    ioctl(fd, mode);
-    write(fd, msg, 256);
-    read(fd, msg, 256);
-    close(fd);
-}
+// crypt_msg is now in client_shared.c
 
 //hàm in menu chính
 void print_menu() {

@@ -240,6 +240,7 @@ void handle_join(int sock, Packet *pkt, int is_logged_in, int *room) {
         }
     } else {
         strcpy(response.cmd, "JOIN_ERR");
+        strcpy(response.arg1, "Room not found or empty");
         send(sock, &response, sizeof(Packet), 0);
     }
 }
