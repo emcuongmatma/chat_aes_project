@@ -122,3 +122,4 @@ Dự án xây dựng dựa trên kiến trúc tập trung **Client-Server** kế
    - Thiết bị nhận kích hoạt Thread tự động nhận, tách gói tin.
    - Ném nội dung bị mã hoá ngược xuống `/dev/aes_driver` của máy mình (Mode DECRYPT) để phục hồi. 
    - Cuối cùng in ra cửa sổ giao diện cho người dùng đọc.
+## Release 1.0
