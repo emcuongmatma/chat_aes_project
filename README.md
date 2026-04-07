@@ -36,7 +36,7 @@ Server quản lý việc đăng ký, đăng nhập và định tuyến tin nhắ
 Mở một Terminal mới:
 ```bash
 cd server
-gcc server.c -o server -lpthread
+gcc server.c -o server -lpthread -lcrypt
 ./server
 ```
 

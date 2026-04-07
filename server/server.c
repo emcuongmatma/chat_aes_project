@@ -5,11 +5,13 @@
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <crypt.h>
+#include <time.h>
 
 #define PORT 9000
 #define MAX_CLIENTS 50
 #define MAX_ROOMS 10
-#define HASH_SIZE 17  // 16 chars + null terminator
+#define HASH_SIZE 100  // Bcrypt hash size (60 chars + null terminator)
 
 // ===============================================
 // MODELS & STRUCTURES
@@ -54,15 +56,30 @@ pthread_mutex_t rooms_lock = PTHREAD_MUTEX_INITIALIZER;
 // ===============================================
 
 /**
- * Hàm băm mật khẩu đơn giản (djb2 hash)
- * Mục đích: Không lưu mật khẩu text rõ vào database để bảo đảm an toàn.
+ * Hàm tạo salt cơ bản cho Bcrypt ($2b$)
+ */
+void generate_salt(char *salt) {
+    const char *chars = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    strcpy(salt, "$2b$05$");
+    for (int i = 0; i < 22; i++) {
+        salt[7 + i] = chars[rand() % 64];
+    }
+    salt[29] = '\0';
+}
+
+/**
+ * Hàm băm mật khẩu nâng cao (Bcrypt)
+ * Mục đích: Bảo mật thông tin người dùng tối đa.
  */
 void hash_password(const char *pass, char *out) {
-    unsigned long hash = 5381;
-    int c;
-    while ((c = *pass++))
-        hash = ((hash << 5) + hash) + c; 
-    sprintf(out, "%016lx", hash);
+    char salt[30];
+    generate_salt(salt);
+    char *hash = crypt(pass, salt);
+    if (hash) {
+        strcpy(out, hash);
+    } else {
+        strcpy(out, "error");
+    }
 }
 
 // ===============================================
@@ -99,7 +116,7 @@ void handle_register(int sock, Packet *pkt) {
     }
 
     fseek(f, 0, SEEK_SET);
-    char u[50], p[50];
+    char u[50], p[100];
     int exists = 0;
     while(fscanf(f, "%s %s", u, p) != EOF) {
         if(strcmp(u, pkt->arg1) == 0) {
@@ -127,17 +144,17 @@ void handle_login(int sock, Packet *pkt, char *username, int *is_logged_in) {
     Packet response;
     memset(&response, 0, sizeof(Packet));
     
-    char hashed_pass[HASH_SIZE];
-    hash_password(pkt->arg2, hashed_pass);
-
     pthread_mutex_lock(&auth_lock);
     FILE *f = fopen("users.db", "r");
     int valid = 0;
     if(f) {
-        char u[50], p[50];
+        char u[50], p[100];
         while(fscanf(f, "%s %s", u, p) != EOF) {
-            if(strcmp(u, pkt->arg1) == 0 && strcmp(p, hashed_pass) == 0) {
-                valid = 1;
+            if(strcmp(u, pkt->arg1) == 0) {
+                char *hash = crypt(pkt->arg2, p);
+                if (hash && strcmp(hash, p) == 0) {
+                    valid = 1;
+                }
                 break;
             }
         }
@@ -350,6 +367,7 @@ void *client_thread(void *arg)
 
 int main()
 {
+    srand(time(NULL));
     //khởi tạo server
     int server_fd, client_socket;
     struct sockaddr_in server, client;
