@@ -80,7 +80,7 @@ void send_packet(int sock, const char *cmd, const char *arg1, const char *arg2, 
     if(cmd)  strncpy(pkt.cmd, cmd, 19);
     if(arg1) strncpy(pkt.arg1, arg1, 49);
     if(arg2) strncpy(pkt.arg2, arg2, 49);
-    if(data) strncpy(pkt.data, data, 255);
+    if(data) memcpy(pkt.data, data, 256);
     
     send(sock, &pkt, sizeof(Packet), 0);
 }
